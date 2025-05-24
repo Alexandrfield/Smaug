@@ -3,7 +3,10 @@ package worker
 import (
 	"fmt"
 	"strings"
+	"time"
 
+	clientCommon "github.com/Alexandrfield/Smaug/internal/client/common"
+	clientSecurity "github.com/Alexandrfield/Smaug/internal/client/security"
 	"github.com/Alexandrfield/Smaug/internal/common"
 	"github.com/Alexandrfield/Smaug/internal/common/security"
 )
@@ -11,14 +14,15 @@ import (
 type TunnelToServer interface {
 	Registration(login string, password string) error
 	Login(login string, password string) ([]byte, error)
-	SaveData(dat security.DataForSave) error
-	GetData(name string) (security.DataForSave, error)
-	GetAllData() ([]security.DataForSave, error)
+	SaveData(description string, dat []byte) error
+	GetData(name string) ([][]byte, error)
+	GetAllData() ([][]byte, error)
 }
+
 type clientCLI struct {
-	logger        common.Logger
-	cred          *security.Credential
-	networkClient TunnelToServer
+	logger          common.Logger
+	secyrityManager *clientSecurity.NoteManager
+	networkClient   TunnelToServer
 }
 
 func (cli *clientCLI) Registration() error {
@@ -37,7 +41,8 @@ func (cli *clientCLI) Registration() error {
 	if err != nil {
 		return fmt.Errorf("Problem with login after registration. err:%w", err)
 	}
-	cli.cred = security.GetNewCredential(passwordinp, logininp, temp, cli.logger)
+	cred := security.GetNewCredential(passwordinp, logininp, temp, cli.logger)
+	cli.secyrityManager = clientSecurity.NewNoteManager(cli.logger, cred)
 	return nil
 }
 func (cli *clientCLI) Login() error {
@@ -52,14 +57,45 @@ func (cli *clientCLI) Login() error {
 	if err != nil {
 		return fmt.Errorf("Problem with login. err:%w", err)
 	}
-	cli.cred = security.GetNewCredential(passwordinp, logininp, temp, cli.logger)
+	cred := security.GetNewCredential(passwordinp, logininp, temp, cli.logger)
+	cli.secyrityManager = clientSecurity.NewNoteManager(cli.logger, cred)
 	return nil
 }
-func SaveData() {
-
+func (cli *clientCLI) SaveData() error {
+	fmt.Printf("enter a name that you can use to get this information later:\n")
+	var description string
+	fmt.Scan(&description)
+	fmt.Printf("enter the information to save:\n")
+	var plainText string
+	fmt.Scan(&plainText)
+	metadata := clientCommon.NewMetadata("text", cli.secyrityManager.GetLogin(), time.Now())
+	newNote := cli.secyrityManager.CreateNewNotes(plainText, description, metadata)
+	err := cli.networkClient.SaveData(description, newNote.Serialize())
+	if err != nil {
+		return fmt.Errorf("SaveData err:%w", err)
+	}
+	return nil
 }
-func GetData() {
 
+func (cli *clientCLI) GetData() {
+
+	fmt.Printf("enter a name information:\n")
+	var description string
+	fmt.Scan(&description)
+
+	data, err := cli.networkClient.GetData(description)
+	if err != nil {
+		fmt.Printf("Problem Get data. err:%s", err)
+		return
+	}
+	for _, val := range data {
+		note := cli.secyrityManager.OpenNote(val)
+		plaintext, metadata := cli.secyrityManager.GetInfoFromNote(note)
+		if len(plaintext) == 0 || metadata == nil {
+			continue
+		}
+		fmt.Printf("data:%s\n", plaintext)
+	}
 }
 func GetAllData() {
 

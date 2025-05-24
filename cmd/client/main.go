@@ -12,7 +12,7 @@ import (
 
 func main() {
 	fmt.Printf("Start Smaug aplication\n")
-	logger := common.GetComponentLogger()
+	logger := common.GetComponentLogger("debug")
 	done := make(chan struct{})
 
 	go worker.ClientAppLoop(done, logger)

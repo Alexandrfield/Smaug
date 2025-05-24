@@ -13,7 +13,7 @@ import (
 
 func main() {
 	fmt.Printf("Start Smaug server\n")
-	logger := common.GetComponentLogger()
+	logger := common.GetComponentLogger("debug")
 	done := make(chan struct{})
 	osSignals := make(chan os.Signal, 1)
 	ctx, cancle := context.WithCancel(context.Background())
