@@ -1,4 +1,4 @@
-package security
+package common
 
 import (
 	"bytes"
@@ -8,10 +8,10 @@ import (
 func TestSaveDataToStream(t *testing.T) {
 	data := []byte{0x01, 0x02, 0x10, 0x20, 0xff}
 	actualIndex := 0
-	expectedLength := sizeField + len(data)
+	expectedLength := SizeField + len(data)
 	expected := []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x01, 0x02, 0x10, 0x20, 0xff}
 	actual := make([]byte, expectedLength)
-	saveDataToStream(actual, &actualIndex, data)
+	SaveDataToStream(actual, &actualIndex, data)
 	if actualIndex != expectedLength {
 		t.Errorf("error length. expectd:%d, actual^%d", expectedLength, actualIndex)
 	}
@@ -24,7 +24,7 @@ func TestLoadDataFromStream(t *testing.T) {
 	actualIndex := 0
 	data := []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x01, 0x02, 0x10, 0x20, 0xff}
 	expected := []byte{0x01, 0x02, 0x10, 0x20, 0xff}
-	actual, err := loadDataFromStream(data, &actualIndex)
+	actual, err := LoadDataFromStream(data, &actualIndex)
 	if err != nil {
 		t.Errorf("Result was incorrect. expected error:nil; actual:%s", err)
 	}
@@ -36,7 +36,7 @@ func TestLoadDataFromStream(t *testing.T) {
 func TestLoadDataFromStreamErrorLength(t *testing.T) {
 	actualIndex := 0
 	data := []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x01, 0x02, 0x10}
-	_, err := loadDataFromStream(data, &actualIndex)
+	_, err := LoadDataFromStream(data, &actualIndex)
 	if err == nil {
 		t.Errorf("Result was incorrect. expected error:not nil; actual:nil")
 	}

@@ -2,42 +2,54 @@ package security
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"io"
 
 	clientCommon "github.com/Alexandrfield/Smaug/internal/client/common"
 	"github.com/Alexandrfield/Smaug/internal/common"
-	"github.com/Alexandrfield/Smaug/internal/common/security"
 )
 
 type NoteManager struct {
 	logger    common.Logger
-	cred      *security.Credential
+	login     string
 	cryptoKey []byte
 	signKey   []byte
 }
 
 var noteManager *NoteManager = nil
 
-func NewNoteManager(logger common.Logger, cred *security.Credential) *NoteManager {
+func NewNoteManager(logger common.Logger) *NoteManager {
 	if noteManager == nil {
-		// TODO: исправить  на нормальную генерацию ключей
-		cryptoKey := []byte("passphrasewhichneedstobe32bytes!")
-		signKey := []byte("passphrasewhichneedstobe32bytes!")
-		noteManager = &NoteManager{logger: logger, cred: cred,
-			cryptoKey: cryptoKey, signKey: signKey}
+
+		noteManager = &NoteManager{logger: logger}
 	}
 	return noteManager
 }
 
-func (manager *NoteManager) GetLogin() string {
-	return manager.cred.GetLogin()
+func (manager *NoteManager) InitParametrs(login []byte, password []byte) {
+	manager.login = string(login)
+	manager.saveSignKey(password)
+	manager.saveCryptoKey(login, password)
 }
-func (manager *NoteManager) CreateNewNotes(plainText string, description string, metadata *clientCommon.Metadata) *Note {
+func (manager *NoteManager) saveSignKey(password []byte) {
+	manager.signKey = common.ComplicatedPasswordForPrepareSign(password)
+}
+func (manager *NoteManager) saveCryptoKey(login []byte, password []byte) {
+	h := sha256.New()
+	h.Write([]byte{0x02, 0xfa, 0xa4, 0x55})
+	h.Write(login)
+	h.Write(password)
+	manager.cryptoKey = h.Sum(nil)
+}
+func (manager *NoteManager) GetLogin() string {
+	return manager.GetLogin()
+}
+func (manager *NoteManager) CreateNewNotes(plainText string, description string, metadata *clientCommon.Metadata) *common.Note {
 	serializedMetadata := clientCommon.SerializeMetadata(metadata)
-	dataForEncrypt := make([]byte, sizeField+len(serializedMetadata)+sizeField+len(plainText))
+	dataForEncrypt := make([]byte, common.SizeField+len(serializedMetadata)+common.SizeField+len(plainText))
 	actualIndex := 0
-	saveDataToStream(dataForEncrypt, &actualIndex, serializedMetadata)
-	saveDataToStream(dataForEncrypt, &actualIndex, []byte(plainText))
+	common.SaveDataToStream(dataForEncrypt, &actualIndex, serializedMetadata)
+	common.SaveDataToStream(dataForEncrypt, &actualIndex, []byte(plainText))
 
 	cipherText, err := common.EncryptAES(dataForEncrypt, manager.cryptoKey)
 	if err != nil {
@@ -52,19 +64,17 @@ func (manager *NoteManager) CreateNewNotes(plainText string, description string,
 		return nil
 	}
 	info := []byte(description)
-	var temp []byte
-	temp = append(temp, info...)
-	temp = append(temp, temporyKey...)
-	temp = append(temp, cipherText...)
-	sign, _ := common.Sign(temp, manager.signKey)
+	note := common.CreatNote(info, temporyKey, cipherText)
 
-	note := CreatNote(info, temporyKey, cipherText, sign)
+	temp := note.GetDataForSign()
+	signKey := common.CalculateSignKey(manager.signKey, temporyKey)
+	note.Sign, _ = common.Sign(temp, signKey)
 	return note
 }
 
-func (manager *NoteManager) OpenNote(data []byte) *Note {
+func (manager *NoteManager) OpenNote(data []byte) *common.Note {
 
-	var note Note
+	var note common.Note
 	err := note.Deserialize(data)
 	if err != nil {
 		manager.logger.Warnf("can't deserialize data")
@@ -72,15 +82,15 @@ func (manager *NoteManager) OpenNote(data []byte) *Note {
 	}
 	return &note
 }
-func (manager *NoteManager) GetInfoFromNote(note *Note) ([]byte, *clientCommon.Metadata) {
-	decryptText, err := common.DecryptAES(note.cipherText, manager.cryptoKey)
+func (manager *NoteManager) GetInfoFromNote(note *common.Note) ([]byte, *clientCommon.Metadata) {
+	decryptText, err := common.DecryptAES(note.CipherText, manager.cryptoKey)
 	if err != nil {
 		manager.logger.Warnf("problem with create new Note. err:%s", err)
 		return []byte{}, nil
 	}
 	actualIndex := 0
-	metadata, _ := loadDataFromStream(decryptText, &actualIndex)
+	metadata, _ := common.LoadDataFromStream(decryptText, &actualIndex)
 	met, _ := clientCommon.DeserializeMetadata(metadata)
-	plainText, _ := loadDataFromStream(decryptText, &actualIndex)
+	plainText, _ := common.LoadDataFromStream(decryptText, &actualIndex)
 	return plainText, met
 }

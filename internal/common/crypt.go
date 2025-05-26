@@ -8,8 +8,24 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+
+	"golang.org/x/crypto/argon2"
+	"golang.org/x/crypto/hkdf"
 )
 
+func ComplicatedPasswordForPrepareSign(password []byte) []byte {
+	salt := []byte{0x24, 0x4a, 0xf0, 0xbb, 0xc9, 0xa4, 0xe7, 0x56, 0x1f, 0x02, 0x1a, 0xb4}
+	key := argon2.IDKey(password, salt, 1, 16*1024, 4, 32)
+	return key
+}
+
+func CalculateSignKey(secret []byte, salt []byte) []byte {
+	hash := sha256.New
+	hkdf := hkdf.New(hash, secret, salt, nil)
+	key := make([]byte, 32)
+	io.ReadFull(hkdf, key)
+	return key
+}
 func GetKeyFromString(key string) ([]byte, error) {
 	return []byte(key), nil
 }
