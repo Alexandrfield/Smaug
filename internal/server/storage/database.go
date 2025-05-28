@@ -3,42 +3,56 @@ package storage
 import (
 	"context"
 	"database/sql"
-	"errors"
+	"embed"
+	b64 "encoding/base64"
 	"fmt"
 	"time"
 
 	"github.com/Alexandrfield/Smaug/internal/common"
-
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 	_ "github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-type KeysCreator interface {
-	CreateKeys() (string, string)
-}
 type DatabaseStorage struct {
-	Logger      common.Logger
+	logger      common.Logger
 	db          *sql.DB
-	DatabaseDsn string
-	creator     KeysCreator
+	databaseDsn string
 }
 
-var ErrPasswordNotValidForUser = errors.New("for this user password not valids")
-
-func NewMemDatabaseStorage(logger common.Logger, dsn string, creator KeysCreator) *DatabaseStorage {
-	memStorage := DatabaseStorage{Logger: logger, DatabaseDsn: dsn, creator: creator}
+func NewMemDatabaseStorage(logger common.Logger, dsn string) *DatabaseStorage {
+	memStorage := DatabaseStorage{logger: logger, databaseDsn: dsn}
+	err := memStorage.Start()
+	if err != nil {
+		logger.Errorf("can't create database.err:%s", err)
+		return nil
+	}
 	return &memStorage
 }
-func (st *DatabaseStorage) createTable(ctx context.Context) error {
-	const queryUsers = `CREATE TABLE if NOT EXISTS Users (id text PRIMARY KEY, 
-	login text, password text, signKeyComplicated text, key text)`
-	if _, err := st.db.ExecContext(ctx, queryUsers); err != nil {
-		return fmt.Errorf("error while trying to create table: %w", err)
+
+//go:embed migrations/*.sql
+var migrationFolder embed.FS
+
+func (st *DatabaseStorage) Migrate() error {
+	d, err := iofs.New(migrationFolder, "migrations")
+	if err != nil {
+		return fmt.Errorf("problem with migration. err:%w", err)
 	}
-	const queryData = `CREATE TABLE if NOT EXISTS Data (id text PRIMARY KEY, 
-	user text, info text, data text)`
-	if _, err := st.db.ExecContext(ctx, queryData); err != nil {
-		return fmt.Errorf("error while trying to create table: %w", err)
+	m, err := migrate.NewWithSourceInstance("iofs", d, st.databaseDsn)
+
+	if err != nil {
+		st.logger.Errorf("problem with migrate.NewWithDatabaseInstance. st.databaseDsn:%s; err:%s", st.databaseDsn, err)
+	}
+	err = m.Down()
+	if err != nil {
+		st.logger.Errorf("problem m.Up. err:%s", err)
+	}
+
+	err = m.Up()
+	if err != nil {
+		st.logger.Errorf("problem m.Up. err:%s", err)
 	}
 	return nil
 }
@@ -48,16 +62,14 @@ func (st *DatabaseStorage) Close() {
 	}
 }
 
-func (st *DatabaseStorage) Start(databaseDsn string) error {
+func (st *DatabaseStorage) Start() error {
 	var err error
-	st.db, err = sql.Open("pgx", databaseDsn)
+	st.db, err = sql.Open("pgx", st.databaseDsn)
 	if err != nil {
 		return fmt.Errorf("can not open database. err:%w", err)
 	}
-	st.Logger.Infof("Connect to db open")
-	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
-	defer cancel()
-	err = st.createTable(ctx)
+	st.logger.Infof("Connect to db open")
+	err = st.Migrate()
 	if err != nil {
 		errClose := st.db.Close()
 		if errClose != nil {
@@ -74,52 +86,128 @@ func (st *DatabaseStorage) isUserLoginExist(login string) bool {
 		"SELECT id FROM Users WHERE login = $1", login)
 	var userID int
 	err := row.Scan(&userID)
-	if err != nil {
-		return false
-	}
-	return true
+	st.logger.Debugf("isUserLoginExist %s check:%t", login, err == nil)
+	return err == nil
 }
 
-func (st *DatabaseStorage) CreateNewUser(login string, password string, signKeyComplicated string, key string) (string, error) {
-	if !st.isUserLoginExist(login) {
-		return "", fmt.Errorf("user with login:%s is already exists", login)
+func (st *DatabaseStorage) CreateNewUser(login string, password []byte, signKeyComplicated []byte, key []byte) error {
+	if st.isUserLoginExist(login) {
+		return fmt.Errorf("user with login:%s is already exists", login)
 	}
 
 	tx, err := st.db.Begin()
 	if err != nil {
-		return "", fmt.Errorf("can not create transaction. err:%w", err)
+		return fmt.Errorf("can not create transaction. err:%w", err)
 	}
-	st.Logger.Debugf("CreateNewUser login:%s;", login)
-
+	st.logger.Debugf("CreateNewUser login:%s;", login)
+	st.logger.Debugf(">>>> password:%s; signKeyComplicated:%s; key:%s;", password, signKeyComplicated, key) //TODO: Remove
 	query := `INSERT INTO Users (login, password, signKeyComplicated, key) VALUES ($1, $2, $3, $4)`
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if _, err := tx.ExecContext(ctx, query, login, password, signKeyComplicated, key); err != nil {
+	if _, err := tx.ExecContext(ctx, query, login, b64.StdEncoding.EncodeToString(password),
+		b64.StdEncoding.EncodeToString(signKeyComplicated), b64.StdEncoding.EncodeToString(key)); err != nil {
 		errRol := tx.Rollback()
 		if errRol != nil {
-			return "", fmt.Errorf("error create new user login:%s. err:%w; and error rollback err:%w",
+			return fmt.Errorf("error create new user login:%s. err:%w; and error rollback err:%w",
 				login, err, errRol)
 		}
-		return "", fmt.Errorf("error create new user. login:%s: %w", login, err)
+		return fmt.Errorf("error create new user. login:%s: %w", login, err)
 	}
 	err = tx.Commit()
 	if err != nil {
-		return "", fmt.Errorf("error with commit transactiom CreateNewUser. err:%w", err)
-	}
-	return signKeyComplicated, nil
-}
-
-func (st *DatabaseStorage) LoginUser(login string, password string) error { // return user_id, signKeyComplicated
-	row := st.db.QueryRowContext(context.Background(),
-		"SELECT id, password, signKeyComplicated FROM Users WHERE login = $1", login)
-	var userID int
-	var passwd string
-	err := row.Scan(&userID, &passwd)
-	if err != nil {
-		return fmt.Errorf("error scan value from row. err:%w", err)
-	}
-	if password != passwd {
-		return ErrPasswordNotValidForUser
+		return fmt.Errorf("error with commit transactiom CreateNewUser. err:%w", err)
 	}
 	return nil
+}
+
+func (st *DatabaseStorage) GetUserPassword(login string) ([]byte, error) {
+	row := st.db.QueryRowContext(context.Background(),
+		"SELECT password FROM Users WHERE login = $1", login)
+	var passwd string
+	err := row.Scan(&passwd)
+	if err != nil {
+		return []byte{}, fmt.Errorf("error scan value from row. err:%w", err)
+	}
+	pas, _ := b64.StdEncoding.DecodeString(passwd)
+	return pas, nil
+}
+
+func (st *DatabaseStorage) GetUserKey(login string) ([]byte, []byte, error) { // return signKeyComplicated, cryptoKey
+	row := st.db.QueryRowContext(context.Background(),
+		"SELECT signKeyComplicated, key FROM Users WHERE login = $1", login)
+	var signKeyComplicated string
+	var cryptoKey string
+	err := row.Scan(&signKeyComplicated, &cryptoKey)
+	if err != nil {
+		return []byte{}, []byte{}, fmt.Errorf("error scan value from row. err:%w", err)
+	}
+	sigKey, _ := b64.StdEncoding.DecodeString(signKeyComplicated)
+	key, _ := b64.StdEncoding.DecodeString(cryptoKey)
+	return sigKey, key, nil
+}
+
+func (st *DatabaseStorage) AddData(login string, description string, data []byte) error {
+	tx, err := st.db.Begin()
+	if err != nil {
+		return fmt.Errorf("can not create transaction AddData. err:%w", err)
+	}
+	query := `INSERT INTO EncryptedData (login, info, data ) VALUES ($1, $2, $3)`
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if _, err := tx.ExecContext(ctx, query, login, description, b64.StdEncoding.EncodeToString(data)); err != nil {
+		return fmt.Errorf("tx, error while trying to ord. err: %w", err)
+	}
+	err = tx.Commit()
+	if err != nil {
+		return fmt.Errorf("error with commit transaction AddData. err:%w", err)
+	}
+	return nil
+}
+
+func (st *DatabaseStorage) GetData(login string, description string) ([][]byte, error) {
+	var res [][]byte
+	rows, err := st.db.QueryContext(context.Background(),
+		"SELECT data FROM EncryptedData WHERE login=$1 and info=$2", login, description)
+	if err != nil {
+		return res, fmt.Errorf("problem GetData. err:%w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var dat string
+		err := rows.Scan(&dat)
+		if err != nil {
+			st.logger.Warnf("error scan value from row. err:%s", err)
+		}
+		d, _ := b64.StdEncoding.DecodeString(dat)
+		res = append(res, d)
+	}
+	err = rows.Err()
+	if err != nil {
+		st.logger.Warnf("error rows. err:%s", err)
+	}
+	return res, nil
+}
+
+func (st *DatabaseStorage) GetAllData(login string) ([][]byte, error) {
+	var res [][]byte
+	rows, err := st.db.QueryContext(context.Background(),
+		"SELECT data FROM EncryptedData WHERE login=$1", login)
+	if err != nil {
+		return res, fmt.Errorf("problem GetData. err:%w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var dat string
+		err := rows.Scan(&dat)
+		if err != nil {
+			st.logger.Warnf("error scan value from row. err:%s", err)
+		}
+		d, _ := b64.StdEncoding.DecodeString(dat)
+		res = append(res, d)
+	}
+	err = rows.Err()
+	if err != nil {
+		st.logger.Warnf("error rows. err:%s", err)
+	}
+	return res, nil
 }

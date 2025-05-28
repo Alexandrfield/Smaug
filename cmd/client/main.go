@@ -14,8 +14,8 @@ func main() {
 	fmt.Printf("Start Smaug aplication\n")
 	logger := common.GetComponentLogger("debug")
 	done := make(chan struct{})
-
-	go worker.ClientAppLoop(done, logger)
+	config, _ := worker.ParseFlags()
+	go worker.ClientAppLoop(done, logger, &config)
 
 	osSignals := make(chan os.Signal, 1)
 	signal.Notify(osSignals, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)

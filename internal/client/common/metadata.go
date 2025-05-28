@@ -12,6 +12,10 @@ type Metadata struct {
 	User       string `json:"user"`
 }
 
+func (met *Metadata) GetInfo() string {
+	return "type:" + met.TypeNote + "; create:" + met.TimeCreate + "; user:" + met.User + ";"
+}
+
 func SerializeMetadata(dat *Metadata) []byte {
 	data, _ := json.Marshal(dat)
 	return data

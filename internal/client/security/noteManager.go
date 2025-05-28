@@ -33,6 +33,7 @@ func (manager *NoteManager) InitParametrs(login []byte, password []byte) {
 }
 func (manager *NoteManager) saveSignKey(password []byte) {
 	manager.signKey = common.ComplicatedPasswordForPrepareSign(password)
+	manager.logger.Debugf("manager.signKey:%v", manager.signKey)
 }
 func (manager *NoteManager) saveCryptoKey(login []byte, password []byte) {
 	h := sha256.New()
@@ -42,7 +43,7 @@ func (manager *NoteManager) saveCryptoKey(login []byte, password []byte) {
 	manager.cryptoKey = h.Sum(nil)
 }
 func (manager *NoteManager) GetLogin() string {
-	return manager.GetLogin()
+	return manager.login
 }
 func (manager *NoteManager) CreateNewNotes(plainText string, description string, metadata *clientCommon.Metadata) *common.Note {
 	serializedMetadata := clientCommon.SerializeMetadata(metadata)
@@ -65,6 +66,27 @@ func (manager *NoteManager) CreateNewNotes(plainText string, description string,
 	}
 	info := []byte(description)
 	note := common.CreatNote(info, temporyKey, cipherText)
+
+	temp := note.GetDataForSign()
+	signKey := common.CalculateSignKey(manager.signKey, temporyKey)
+	note.Sign, _ = common.Sign(temp, signKey)
+	return note
+}
+
+func (manager *NoteManager) CreateServiceNotes(description string) *common.Note {
+	RandDataAsCrypt := make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, RandDataAsCrypt); err != nil {
+		manager.logger.Warnf("Can't create tempData: %s", err)
+		return nil
+	}
+
+	temporyKey := make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, temporyKey); err != nil {
+		manager.logger.Warnf("Can't create temporyKey: %s", err)
+		return nil
+	}
+	info := []byte(description)
+	note := common.CreatNote(info, temporyKey, RandDataAsCrypt)
 
 	temp := note.GetDataForSign()
 	signKey := common.CalculateSignKey(manager.signKey, temporyKey)

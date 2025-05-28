@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS EncryptedData;
+DROP TABLE IF EXISTS Users;

@@ -17,8 +17,11 @@ func main() {
 	done := make(chan struct{})
 	osSignals := make(chan os.Signal, 1)
 	ctx, cancle := context.WithCancel(context.Background())
-
-	go worker.ServerLoop(ctx, done, logger)
+	config, err := worker.ParseFlags()
+	if err != nil {
+		logger.Fatalf("Can't start application. err:%s", err)
+	}
+	go worker.ServerLoop(ctx, done, config, logger)
 
 	signal.Notify(osSignals, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	<-osSignals
