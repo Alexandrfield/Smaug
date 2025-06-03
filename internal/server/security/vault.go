@@ -2,7 +2,6 @@ package security
 
 import (
 	"crypto/rand"
-	"fmt"
 	"io"
 
 	"github.com/Alexandrfield/Smaug/internal/common"
@@ -28,7 +27,6 @@ func (vault *SafetyVault) CreateKeys(password []byte) ([]byte, []byte) {
 		vault.logger.Debugf("encrypt error:%s", err)
 	}
 	signKeyComplicated := common.ComplicatedPasswordForPrepareSign(password)
-	fmt.Printf("signKeyComplicated:%v\n", signKeyComplicated)
 	return newKey, signKeyComplicated
 }
 func (vault *SafetyVault) EncryptData(plainDta []byte, key []byte) []byte {

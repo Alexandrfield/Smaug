@@ -1,5 +1,7 @@
 package common
 
+import "fmt"
+
 func CreatNote(info []byte, temporyKey []byte, cipherText []byte) *Note {
 	return &Note{Info: info, TemporaryKey: temporyKey, CipherText: cipherText}
 }
@@ -33,6 +35,9 @@ func (note *Note) Serialize() []byte {
 
 func (note *Note) Deserialize(data []byte) error {
 	actualIndex := 0
+	if len(data) < 32 {
+		return fmt.Errorf("error data length for deserialize. data:%x", data)
+	}
 	note.Info, _ = LoadDataFromStream(data, &actualIndex)
 	note.TemporaryKey, _ = LoadDataFromStream(data, &actualIndex)
 	note.CipherText, _ = LoadDataFromStream(data, &actualIndex)

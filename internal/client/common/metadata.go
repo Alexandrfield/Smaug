@@ -10,6 +10,7 @@ type Metadata struct {
 	TypeNote   string `json:"typeNote"`
 	TimeCreate string `json:"create"`
 	User       string `json:"user"`
+	Filename   string `json:"filename"`
 }
 
 func (met *Metadata) GetInfo() string {

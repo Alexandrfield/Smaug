@@ -11,6 +11,18 @@ import (
 	"github.com/Alexandrfield/Smaug/internal/server/storage"
 )
 
+func checkSign(note *common.Note, comlicatedSignKey []byte) bool {
+	signKey := common.CalculateSignKey([]byte(comlicatedSignKey), note.TemporaryKey)
+	return common.CheckHash(note.GetDataForSign(), note.Sign, signKey)
+}
+
+func getNoteFormByte(data string) *common.Note {
+	var note common.Note
+	note.Deserialize([]byte(data))
+	return &note
+}
+
+//go:generate mockgen -source=server.go -destination=mock/server.go
 type DatabaseVault interface {
 	CreateNewUser(login string, password []byte, signKeyComplicated []byte, key []byte) error
 	GetUserPassword(login string) ([]byte, error)
@@ -41,7 +53,6 @@ type ServerSafe struct {
 func (serv *ServerSafe) Registration(login string, password []byte) error {
 	serv.logger.Debugf("User:%s try register.", login)
 	passwordForDB := security.HashPassword(password)
-	serv.logger.Debugf("save passwordInDB:%v", password) //TODO:remove
 	key, signKeyComplicated := serv.vault.CreateKeys([]byte(password))
 	err := serv.database.CreateNewUser(login, passwordForDB, signKeyComplicated, key)
 	if err != nil {
@@ -63,24 +74,13 @@ func (serv *ServerSafe) Login(login string, password []byte) error {
 		return err
 	}
 	if !bytes.Equal(passwordInDB, password) {
-		serv.logger.Debugf("passwordInDB:%v<->password:%v", passwordInDB, password) //TODO:Remove
+		fmt.Printf("passwordInDB:%x<->password:%x\n", passwordInDB, password) //TODO:Remove
 		err := fmt.Errorf("login not complited. err: Password incorrect")
 		serv.logger.Warnf("err:%s", err)
 		return err
 	}
 	serv.logger.Infof("User:%s successfully logined.", login)
 	return nil
-}
-
-func (serv *ServerSafe) checkSign(note *common.Note, comlicatedSignKey []byte) bool {
-	signKey := common.CalculateSignKey([]byte(comlicatedSignKey), note.TemporaryKey)
-	return common.CheckHash(note.GetDataForSign(), note.Sign, signKey)
-}
-
-func getNoteFormByte(data string) *common.Note {
-	var note common.Note
-	note.Deserialize([]byte(data))
-	return &note
 }
 func (serv *ServerSafe) AddData(login string, data string) error {
 	serv.logger.Debugf("User:%s try addData.", login)
@@ -91,7 +91,7 @@ func (serv *ServerSafe) AddData(login string, data string) error {
 		return err
 	}
 	note := getNoteFormByte(data)
-	if !serv.checkSign(note, comlicatedSignKey) {
+	if !checkSign(note, comlicatedSignKey) {
 		err := fmt.Errorf("problem with add data. err:incorrect signature")
 		serv.logger.Warnf("err:%s", err)
 		return err
@@ -115,7 +115,7 @@ func (serv *ServerSafe) GetData(login string, data string) ([]string, error) {
 		return res, err
 	}
 	note := getNoteFormByte(data)
-	if !serv.checkSign(note, comlicatedSignKey) {
+	if !checkSign(note, comlicatedSignKey) {
 		err := fmt.Errorf("problem with add data. err:incorrect signature")
 		serv.logger.Warnf("err:%s", err)
 		return res, err
@@ -143,7 +143,7 @@ func (serv *ServerSafe) GetAllData(login string, data string) ([]string, error) 
 		return res, err
 	}
 	note := getNoteFormByte(data)
-	if !serv.checkSign(note, comlicatedSignKey) {
+	if !checkSign(note, comlicatedSignKey) {
 		err := fmt.Errorf("problem with add data. err:incorrect signature")
 		serv.logger.Warnf("err:%s", err)
 		return res, err
@@ -167,5 +167,4 @@ func ServerLoop(ctx context.Context, done chan struct{}, config Config, logger c
 	<-ctx.Done()
 	logger.Infof("Stop ServerLoop")
 	close(done)
-	return
 }

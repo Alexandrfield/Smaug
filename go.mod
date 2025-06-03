@@ -4,6 +4,7 @@ go 1.23.4
 
 require (
 	github.com/golang-migrate/migrate/v4 v4.18.3
+	github.com/golang/mock v1.6.0
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/stretchr/testify v1.10.0
 	go.uber.org/zap v1.27.0

@@ -20,13 +20,11 @@ func (grpcServ *GRPCServerPart) Registration(ctx context.Context, cred *protobuf
 	login := cred.GetLogin()
 	password := cred.GetPassword()
 	err := grpcServ.logicServer.Registration(login, password)
-	fmt.Printf("---> Registration(): %s\n", err)
 	return nil, err
 }
 
 func (grpcServ *GRPCServerPart) Login(ctx context.Context, cred *protobufproto.Cred) (*protobufproto.Err,
 	error) {
-	fmt.Printf("<Login>\n")
 	login := cred.GetLogin()
 	password := cred.GetPassword()
 	err := grpcServ.logicServer.Login(login, password)
