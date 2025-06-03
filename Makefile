@@ -29,3 +29,9 @@ _golangci-lint-rm-unformatted-report: _golangci-lint-format-report
 .PHONY: golangci-lint-clean
 golangci-lint-clean:
 	sudo rm -rf ./golangci-lint 
+
+.PHONY: coverTest
+coverTest:
+	go test ./... -coverprofile=coverage.out
+	go tool cover -html=coverage.out 
+	go tool cover -func coverage.out

@@ -1,0 +1,27 @@
+package main
+
+import (
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/Alexandrfield/Smaug/internal/client/worker"
+	"github.com/Alexandrfield/Smaug/internal/common"
+)
+
+func main() {
+	fmt.Printf("Start Smaug aplication\n")
+	logger := common.GetComponentLogger("debug")
+	done := make(chan struct{})
+	config, _ := worker.ParseFlags()
+	go worker.ClientAppLoop(done, logger, &config)
+
+	osSignals := make(chan os.Signal, 1)
+	signal.Notify(osSignals, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	select {
+	case <-done:
+	case <-osSignals:
+	}
+	fmt.Printf("Stop Smaug aplication\n")
+}

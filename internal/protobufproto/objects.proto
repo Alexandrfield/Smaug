@@ -1,0 +1,30 @@
+edition = "2023";
+package protobufproto;
+import "google/protobuf/go_features.proto";
+option features.(pb.go).api_level = API_OPAQUE;
+option go_package = "proto/protobufproto";
+
+service GRPService {
+  rpc Registration (Cred) returns (Err) ;
+  rpc Login (Cred) returns (Err);
+  rpc SaveData(Note) returns (Err);
+  rpc GetData(Note) returns (SavedNotes);
+  rpc GetAllData(Note) returns (SavedNotes);
+}
+
+message Cred {
+  string login = 1;  
+  bytes password  = 2;  
+} 
+message Note {
+  string login = 1;  
+  bytes data  = 2;  
+} 
+
+message SavedNotes {
+  repeated Note Notes = 2;  
+} 
+
+message Err {
+
+}

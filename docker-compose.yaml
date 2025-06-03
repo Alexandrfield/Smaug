@@ -1,0 +1,46 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    ports:
+      - 5432:5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_PASSWORD=qwerwrbyrbgwb
+      - POSTGRES_USER=test1_user
+      - POSTGRES_DB=citizix_db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test1_user -d citizix_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: always
+    networks:
+      - smaug_network
+
+  server:
+    build: 
+      context: .
+      dockerfile: ./cmd/server/Dockerfile
+    container_name: smaugServer
+    restart: always
+    ports:
+      - "50051:50051/udp"
+      - "50051:50051/tcp"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://postgres:5432/citizix_db?user=test1_user&password=qwerwrbyrbgwb&sslmode=disable
+    command: ["./smaugServer", "-k", "fa4f22ddvr", "-d", "postgresql://postgres:5432/citizix_db?user=test1_user&password=qwerwrbyrbgwb&sslmode=disable"]
+    networks:
+      - smaug_network
+
+networks:
+  smaug_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
