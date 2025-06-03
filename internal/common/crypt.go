@@ -46,11 +46,11 @@ func EncryptAES(dataForSafe []byte, key []byte) ([]byte, error) {
 
 	c, err := aes.NewCipher(key)
 	if err != nil {
-		return []byte{}, fmt.Errorf("Can't create chipher %w", err)
+		return []byte{}, fmt.Errorf("can't create chipher %w", err)
 	}
 	iv := make([]byte, AES256IVSIZE)
 	if _, err = io.ReadFull(rand.Reader, iv); err != nil {
-		return []byte{}, fmt.Errorf("Can't create iv %w", err)
+		return []byte{}, fmt.Errorf("can't create iv %w", err)
 	}
 	safeData := make([]byte, len(dataForSafe))
 	ofbStream := cipher.NewOFB(c, iv)
@@ -67,7 +67,7 @@ func DecryptAES(cipherText []byte, key []byte) ([]byte, error) {
 	iv := cipherText[:AES256IVSIZE]
 	c, err := aes.NewCipher(key)
 	if err != nil {
-		return []byte{}, fmt.Errorf("Can't create chipher %v", err)
+		return []byte{}, fmt.Errorf("can't create chipher %v", err)
 	}
 	ofbStream := cipher.NewOFB(c, iv)
 	temp := cipherText[AES256IVSIZE:]
